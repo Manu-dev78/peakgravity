@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { IdeProvider } from "@/lib/ide-store";
+import { FsProvider } from "@/lib/fs-store";
 import { IdeShell } from "@/components/ide/IdeShell";
 import { useAuth } from "@/hooks/useAuth";
 import { Logo } from "@/components/ide/Logo";
@@ -44,7 +45,9 @@ function Index() {
 
   return (
     <IdeProvider>
-      <IdeShell />
+      <FsProvider>
+        <IdeShell />
+      </FsProvider>
     </IdeProvider>
   );
 }

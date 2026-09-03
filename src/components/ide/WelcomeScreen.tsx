@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Folder, Copy, Cloud, Database, Braces } from "lucide-react";
 import { Logo } from "./Logo";
 import { useIde } from "@/lib/ide-store";
+import { pickFolder } from "@/lib/electron-api";
 
 const EXTENSIONS = [
   { name: "Cloud Data Tools", desc: "Query and explore cloud databases inside the IDE.", icon: Database },
@@ -15,15 +16,8 @@ export function WelcomeScreen() {
   const list = showAll ? recent : recent.slice(0, 3);
 
   const handleOpenFolder = async () => {
-    // Desktop build: native dialog via IPC. Browser preview: demo workspace.
-    const bridge = (window as unknown as { peakgravity?: { openFolder?: () => Promise<{ name: string; path: string } | null> } })
-      .peakgravity;
-    if (bridge?.openFolder) {
-      const res = await bridge.openFolder();
-      if (res) openWorkspace({ ...res, openedAt: Date.now() });
-      return;
-    }
-    openWorkspace({ name: "my-project", path: "~/projects/my-project", openedAt: Date.now() });
+    const res = await pickFolder();
+    if (res) openWorkspace({ ...res, openedAt: Date.now() });
   };
 
   return (

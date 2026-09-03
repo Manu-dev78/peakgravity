@@ -1,0 +1,16 @@
+{
+  "name": "peakgravity-electron",
+  "version": "0.0.0",
+  "private": true,
+  "description": "PeakGravity desktop shell",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch"
+  },
+  "devDependencies": {
+    "@types/node": "^22.16.5",
+    "electron": "^33.0.0",
+    "typescript": "^5.8.3"
+  }
+}

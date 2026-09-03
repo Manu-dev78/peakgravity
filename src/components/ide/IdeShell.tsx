@@ -6,9 +6,10 @@ import { StatusBar } from "./StatusBar";
 import { AgentPanel } from "./AgentPanel";
 import { WelcomeScreen } from "./WelcomeScreen";
 import { useIde } from "@/lib/ide-store";
+import { isElectron, pickFolder } from "@/lib/electron-api";
 
 export function IdeShell() {
-  const { sidebarOpen, agentOpen, toggleSidebar, setTerminalOpen, terminalOpen } = useIde();
+  const { sidebarOpen, agentOpen, toggleSidebar, setTerminalOpen, terminalOpen, openWorkspace } = useIde();
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -24,6 +25,21 @@ export function IdeShell() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [toggleSidebar, setTerminalOpen, terminalOpen]);
+
+  useEffect(() => {
+    if (!isElectron()) return;
+    const api = window.api!;
+    const offs: Array<() => void> = [];
+    offs.push(
+      api.menu.onOpenFolder(async () => {
+        const res = await pickFolder();
+        if (res) openWorkspace({ ...res, openedAt: Date.now() });
+      }),
+    );
+    offs.push(api.menu.onSave(() => window.dispatchEvent(new CustomEvent("pg:save"))));
+    offs.push(api.menu.onSaveAll(() => window.dispatchEvent(new CustomEvent("pg:save-all"))));
+    return () => offs.forEach((off) => off());
+  }, [openWorkspace]);
 
   return (
     <div className="flex h-screen w-screen flex-col overflow-hidden bg-editor text-foreground">

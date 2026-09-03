@@ -16,6 +16,11 @@ dist-ssr
 .nitro
 *.local
 
+# Electron desktop build
+electron/dist
+electron/node_modules
+electron/release
+
 # Wrangler / Cloudflare
 .wrangler/
 .dev.vars

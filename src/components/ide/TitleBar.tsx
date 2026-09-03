@@ -10,12 +10,14 @@ import {
   Square,
   X,
   Sparkles,
+  Copy,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Logo } from "./Logo";
 import { SettingsDialog } from "./SettingsDialog";
 import { useIde } from "@/lib/ide-store";
 import { useAuth } from "@/hooks/useAuth";
+import { isElectron } from "@/lib/electron-api";
 import { cn } from "@/lib/utils";
 
 const MENUS = ["File", "Edit", "Selection", "View", "Go", "Run", "Terminal", "Help"];
@@ -56,8 +58,26 @@ export function TitleBar() {
     open: false,
     tab: "providers",
   });
+  const [maximized, setMaximized] = useState(false);
+  const electron = isElectron();
   const initials = (user?.email ?? "pg").slice(0, 2).toUpperCase();
   const title = workspace ? `${workspace.name} - PeakGravity IDE` : "PeakGravity IDE";
+
+  useEffect(() => {
+    if (!electron) return;
+    let mounted = true;
+    window.api!.window
+      .isMaximized()
+      .then((m) => {
+        if (mounted) setMaximized(m);
+      })
+      .catch(() => undefined);
+    const off = window.api!.window.onMaximizeChange((m) => setMaximized(m));
+    return () => {
+      mounted = false;
+      off();
+    };
+  }, [electron]);
 
   return (
     <header className="drag-region relative flex h-[38px] shrink-0 select-none items-center bg-chrome text-chrome-foreground">
@@ -110,15 +130,43 @@ export function TitleBar() {
           <ChevronDown size={12} />
         </button>
         <span className="mx-1 h-4 w-px bg-border" />
-        <IconBtn title="Minimize" className="w-10 rounded-none hover:bg-accent">
-          <Minus size={14} />
-        </IconBtn>
-        <IconBtn title="Maximize" className="w-10 rounded-none hover:bg-accent">
-          <Square size={12} />
-        </IconBtn>
-        <IconBtn title="Close" className="w-10 rounded-none hover:bg-destructive hover:text-destructive-foreground">
-          <X size={16} />
-        </IconBtn>
+        {electron ? (
+          <>
+            <IconBtn
+              title="Minimize"
+              className="w-10 rounded-none hover:bg-accent"
+              onClick={() => window.api!.window.minimize()}
+            >
+              <Minus size={14} />
+            </IconBtn>
+            <IconBtn
+              title={maximized ? "Restore" : "Maximize"}
+              className="w-10 rounded-none hover:bg-accent"
+              onClick={() => window.api!.window.toggleMaximize()}
+            >
+              {maximized ? <Copy size={12} /> : <Square size={12} />}
+            </IconBtn>
+            <IconBtn
+              title="Close"
+              className="w-10 rounded-none hover:bg-destructive hover:text-destructive-foreground"
+              onClick={() => window.api!.window.close()}
+            >
+              <X size={16} />
+            </IconBtn>
+          </>
+        ) : (
+          <>
+            <IconBtn title="Minimize" className="w-10 rounded-none hover:bg-accent">
+              <Minus size={14} />
+            </IconBtn>
+            <IconBtn title="Maximize" className="w-10 rounded-none hover:bg-accent">
+              <Square size={12} />
+            </IconBtn>
+            <IconBtn title="Close" className="w-10 rounded-none hover:bg-destructive hover:text-destructive-foreground">
+              <X size={16} />
+            </IconBtn>
+          </>
+        )}
       </div>
       {settings.open && (
         <SettingsDialog
