@@ -50,9 +50,12 @@ interface FsState {
   revealInTree: (path: string) => Promise<void>;
   /** True when the user is on the web preview with no real FS. */
   webFallback: boolean;
+  /** Imperative state update — used by context-menu actions that don't expose a method. */
+  setState: (updater: (s: FsState) => Partial<FsState>) => void;
 }
 
 const FsContext = createContext<FsState | null>(null);
+let _currentFsState: FsState | null = null;
 
 /** Return path relative to the current folder, using forward slashes. */
 function relPath(folder: string | null, abs: string): string {
@@ -463,6 +466,46 @@ export function FsProvider({ children }: { children: ReactNode }) {
     [dirCache, folder],
   );
 
+  // Imperative state update for context menus and shortcuts.
+  // Setters are stable React state setters; this just bundles them.
+  const setState = useCallback(
+    (updater: (s: FsState) => Partial<FsState>) => {
+      const next = updater({
+        folder,
+        tree,
+        expanded,
+        dirCache,
+        tabs,
+        activeTab,
+        loadingFolder,
+        error,
+        openFolder: () => Promise.resolve(),
+        closeFolder: () => undefined,
+        openFile: () => Promise.resolve(),
+        closeTab: () => Promise.resolve(),
+        setActiveTab: () => undefined,
+        toggleDir: () => Promise.resolve(),
+        setBuffer: () => undefined,
+        saveActive: () => Promise.resolve(),
+        saveAll: () => Promise.resolve(),
+        saveTab: () => Promise.resolve(),
+        reloadTab: () => Promise.resolve(),
+        revealInTree: () => Promise.resolve(),
+        webFallback,
+        setState: () => undefined,
+      });
+      if (next.folder !== undefined) setFolder(next.folder);
+      if (next.tree !== undefined) setTree(next.tree);
+      if (next.expanded !== undefined) setExpanded(next.expanded);
+      if (next.dirCache !== undefined) setDirCache(next.dirCache);
+      if (next.tabs !== undefined) setTabs(next.tabs);
+      if (next.activeTab !== undefined) setActiveTabState(next.activeTab);
+      if (next.loadingFolder !== undefined) setLoadingFolder(next.loadingFolder);
+      if (next.error !== undefined) setError(next.error);
+    },
+    [folder, tree, expanded, dirCache, tabs, activeTab, loadingFolder, error, webFallback],
+  );
+
   // Wire the `pg:save` / `pg:save-all` custom events from the menu (IdeShell).
   useEffect(() => {
     const onSave = () => {
@@ -512,6 +555,7 @@ export function FsProvider({ children }: { children: ReactNode }) {
       reloadTab,
       revealInTree,
       webFallback,
+      setState,
     }),
     [
       folder,
@@ -535,16 +579,27 @@ export function FsProvider({ children }: { children: ReactNode }) {
       reloadTab,
       revealInTree,
       webFallback,
+      setState,
     ],
   );
+
+  useEffect(() => {
+    _currentFsState = value;
+  }, [value]);
 
   return <FsContext.Provider value={value}>{children}</FsContext.Provider>;
 }
 
-export function useFsStore(): FsState {
+function useFsStoreImpl(): FsState {
   const ctx = useContext(FsContext);
   if (!ctx) throw new Error("useFsStore must be used inside FsProvider");
   return ctx;
 }
+
+export const useFsStore = useFsStoreImpl as ((() => FsState) & {
+  getState: () => FsState | null;
+});
+
+useFsStore.getState = (): FsState | null => _currentFsState;
 
 export { relPath };
