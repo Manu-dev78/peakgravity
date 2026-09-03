@@ -42,9 +42,22 @@ export const IPC = {
     Write: "terminal:write",
     Resize: "terminal:resize",
     Kill: "terminal:kill",
+    RunCommand: "terminal:run-command",
     Data: "terminal:data",
     Exit: "terminal:exit",
   },
 } as const;
+
+// Non-handle IPC events (one-way, sent from main to renderer).
+export const MENU_EVENTS = [
+  "menu:open-folder",
+  "menu:open-file",
+  "menu:save",
+  "menu:save-all",
+  "menu:command-palette",
+  "menu:toggle-sidebar",
+  "menu:toggle-panel",
+] as const;
+export type MenuEvent = (typeof MENU_EVENTS)[number];
 
 export type IpcChannelMap = typeof IPC;

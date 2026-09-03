@@ -5,11 +5,16 @@ import { SideBar } from "./SideBar";
 import { StatusBar } from "./StatusBar";
 import { AgentPanel } from "./AgentPanel";
 import { WelcomeScreen } from "./WelcomeScreen";
+import { EditorTabs } from "./EditorTabs";
+import { EditorPane } from "./EditorPane";
+import { TerminalPanel } from "./TerminalPanel";
 import { useIde } from "@/lib/ide-store";
+import { useFsStore } from "@/lib/fs-store";
 import { isElectron, pickFolder } from "@/lib/electron-api";
 
 export function IdeShell() {
   const { sidebarOpen, agentOpen, toggleSidebar, setTerminalOpen, terminalOpen, openWorkspace } = useIde();
+  const { folder, tabs, activeTab } = useFsStore();
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -38,8 +43,13 @@ export function IdeShell() {
     );
     offs.push(api.menu.onSave(() => window.dispatchEvent(new CustomEvent("pg:save"))));
     offs.push(api.menu.onSaveAll(() => window.dispatchEvent(new CustomEvent("pg:save-all"))));
+    offs.push(api.menu.onCommandPalette(() => window.dispatchEvent(new CustomEvent("pg:command-palette"))));
+    offs.push(api.menu.onToggleSidebar(() => toggleSidebar()));
+    offs.push(api.menu.onTogglePanel(() => setTerminalOpen(!terminalOpen)));
     return () => offs.forEach((off) => off());
-  }, [openWorkspace]);
+  }, [openWorkspace, toggleSidebar, setTerminalOpen, terminalOpen]);
+
+  const showEditor = activeTab && tabs.some((t) => t.path === activeTab);
 
   return (
     <div className="flex h-screen w-screen flex-col overflow-hidden bg-editor text-foreground">
@@ -48,12 +58,21 @@ export function IdeShell() {
         <ActivityBar />
         {sidebarOpen && <SideBar />}
         <main className="flex min-w-0 flex-1 flex-col">
-          <div className="min-h-0 flex-1">
-            <WelcomeScreen />
-          </div>
+          {showEditor ? (
+            <>
+              <EditorTabs />
+              <div className="min-h-0 flex-1">
+                <EditorPane />
+              </div>
+            </>
+          ) : (
+            <div className="min-h-0 flex-1">
+              <WelcomeScreen />
+            </div>
+          )}
           {terminalOpen && (
-            <div className="h-[220px] shrink-0 border-t border-panel-border bg-chrome p-3 font-mono text-[13px] text-muted-foreground">
-              Terminal is available in the desktop build.
+            <div className="h-[220px] shrink-0 border-t border-panel-border bg-chrome">
+              <TerminalPanel />
             </div>
           )}
         </main>

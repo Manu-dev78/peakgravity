@@ -2,9 +2,14 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { IdeProvider } from "@/lib/ide-store";
 import { FsProvider } from "@/lib/fs-store";
+import { ConversationProvider } from "@/lib/conversation-store";
+import { DiffProvider } from "@/lib/diff-store";
+import { registerBuiltInTools } from "@/lib/agent/tools";
 import { IdeShell } from "@/components/ide/IdeShell";
 import { useAuth } from "@/hooks/useAuth";
 import { Logo } from "@/components/ide/Logo";
+
+registerBuiltInTools();
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -46,7 +51,11 @@ function Index() {
   return (
     <IdeProvider>
       <FsProvider>
-        <IdeShell />
+        <ConversationProvider>
+          <DiffProvider>
+            <IdeShell />
+          </DiffProvider>
+        </ConversationProvider>
       </FsProvider>
     </IdeProvider>
   );

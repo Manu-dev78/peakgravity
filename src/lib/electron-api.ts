@@ -79,14 +79,23 @@ export interface PeakGravityApi {
     write: (id: string, data: string) => Promise<{ ok: boolean }>;
     resize: (id: string, cols: number, rows: number) => Promise<{ ok: boolean }>;
     kill: (id: string) => Promise<{ ok: boolean }>;
-    onData: (cb: (payload: { id: string; data: string }) => void) => () => void;
-    onExit: (cb: (payload: { id: string; exitCode: number }) => void) => () => void;
+    runCommand: (
+      cwd: string,
+      command: string,
+      args: string[],
+      timeoutMs?: number,
+    ) => Promise<{ stdout: string; stderr: string; exitCode: number; error?: string }>;
+    onData: (cb: (payload: { id: string; data: string; isStderr?: boolean }) => void) => () => void;
+    onExit: (cb: (payload: { id: string; exitCode: number; stdout?: string; stderr?: string }) => void) => () => void;
   };
   menu: {
     onOpenFolder: (cb: () => void) => () => void;
     onOpenFile: (cb: () => void) => () => void;
     onSave: (cb: () => void) => () => void;
     onSaveAll: (cb: () => void) => () => void;
+    onCommandPalette: (cb: () => void) => () => void;
+    onToggleSidebar: (cb: () => void) => () => void;
+    onTogglePanel: (cb: () => void) => () => void;
   };
 }
 

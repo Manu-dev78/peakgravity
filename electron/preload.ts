@@ -73,13 +73,20 @@ const api = {
     write: (id: string, data: string) => ipcRenderer.invoke(IPC.Terminal.Write, { id, data }),
     resize: (id: string, cols: number, rows: number) => ipcRenderer.invoke(IPC.Terminal.Resize, { id, cols, rows }),
     kill: (id: string) => ipcRenderer.invoke(IPC.Terminal.Kill, { id }),
-    onData: (cb: (payload: { id: string; data: string }) => void) => {
-      const handler = (_e: IpcRendererEvent, payload: { id: string; data: string }) => cb(payload);
+    runCommand: (cwd: string, command: string, args: string[], timeoutMs?: number) =>
+      ipcRenderer.invoke(IPC.Terminal.RunCommand, { cwd, command, args, timeoutMs }) as Promise<{
+        stdout: string;
+        stderr: string;
+        exitCode: number;
+        error?: string;
+      }>,
+    onData: (cb: (payload: { id: string; data: string; isStderr?: boolean }) => void) => {
+      const handler = (_e: IpcRendererEvent, payload: { id: string; data: string; isStderr?: boolean }) => cb(payload);
       ipcRenderer.on(IPC.Terminal.Data, handler);
       return () => ipcRenderer.off(IPC.Terminal.Data, handler);
     },
-    onExit: (cb: (payload: { id: string; exitCode: number }) => void) => {
-      const handler = (_e: IpcRendererEvent, payload: { id: string; exitCode: number }) => cb(payload);
+    onExit: (cb: (payload: { id: string; exitCode: number; stdout?: string; stderr?: string }) => void) => {
+      const handler = (_e: IpcRendererEvent, payload: { id: string; exitCode: number; stdout?: string; stderr?: string }) => cb(payload);
       ipcRenderer.on(IPC.Terminal.Exit, handler);
       return () => ipcRenderer.off(IPC.Terminal.Exit, handler);
     },
@@ -104,6 +111,21 @@ const api = {
       const h = () => cb();
       ipcRenderer.on("menu:save-all", h);
       return () => ipcRenderer.off("menu:save-all", h);
+    },
+    onCommandPalette: (cb: () => void) => {
+      const h = () => cb();
+      ipcRenderer.on("menu:command-palette", h);
+      return () => ipcRenderer.off("menu:command-palette", h);
+    },
+    onToggleSidebar: (cb: () => void) => {
+      const h = () => cb();
+      ipcRenderer.on("menu:toggle-sidebar", h);
+      return () => ipcRenderer.off("menu:toggle-sidebar", h);
+    },
+    onTogglePanel: (cb: () => void) => {
+      const h = () => cb();
+      ipcRenderer.on("menu:toggle-panel", h);
+      return () => ipcRenderer.off("menu:toggle-panel", h);
     },
   },
 };

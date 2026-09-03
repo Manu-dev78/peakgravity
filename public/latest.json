@@ -1,0 +1,28 @@
+{
+  "version": "0.0.0-pre.0",
+  "channel": "beta",
+  "releasedAt": null,
+  "notes": "Pre-release builds are published as GitHub pre-releases. See https://github.com/anomalyco/peakgravity/releases for the full asset list and changelogs.",
+  "downloads": {
+    "win": {
+      "nsis": "https://github.com/anomalyco/peakgravity/releases/latest",
+      "portable": "https://github.com/anomalyco/peakgravity/releases/latest"
+    },
+    "mac": {
+      "dmg": {
+        "x64": "https://github.com/anomalyco/peakgravity/releases/latest",
+        "arm64": "https://github.com/anomalyco/peakgravity/releases/latest"
+      },
+      "zip": {
+        "x64": "https://github.com/anomalyco/peakgravity/releases/latest",
+        "arm64": "https://github.com/anomalyco/peakgravity/releases/latest"
+      }
+    },
+    "linux": {
+      "AppImage": "https://github.com/anomalyco/peakgravity/releases/latest",
+      "deb": "https://github.com/anomalyco/peakgravity/releases/latest",
+      "rpm": "https://github.com/anomalyco/peakgravity/releases/latest"
+    }
+  },
+  "releasePage": "https://github.com/anomalyco/peakgravity/releases/latest"
+}

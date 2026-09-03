@@ -126,26 +126,40 @@ export const getDecryptedKeys = createServerFn({ method: "POST" })
 export const getSettings = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const { data } = await context.supabase
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const sb = context.supabase as any;
+    const { data } = await sb
       .from("user_settings")
-      .select("default_model, auto_approve")
+      .select("default_model, auto_approve, tool_approvals")
       .eq("user_id", context.userId)
       .maybeSingle();
-    return { defaultModel: data?.default_model ?? null, autoApprove: data?.auto_approve ?? false };
+    return {
+      defaultModel: (data?.default_model as string | null) ?? null,
+      autoApprove: Boolean(data?.auto_approve),
+      toolApprovals: (data?.tool_approvals as Record<string, boolean> | null) ?? {},
+    };
   });
 
 export const updateSettings = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) =>
-    z.object({ defaultModel: z.string().nullable().optional(), autoApprove: z.boolean().optional() }).parse(input),
+    z
+      .object({
+        defaultModel: z.string().nullable().optional(),
+        autoApprove: z.boolean().optional(),
+        toolApprovals: z.record(z.boolean()).optional(),
+      })
+      .parse(input),
   )
-  .handler(async ({ data, context }) => {
-    const patch: { user_id: string; default_model?: string | null; auto_approve?: boolean } = {
-      user_id: context.userId,
-    };
-    if (data.defaultModel !== undefined) patch.default_model = data.defaultModel;
-    if (data.autoApprove !== undefined) patch.auto_approve = data.autoApprove;
-    const { error } = await context.supabase.from("user_settings").upsert(patch);
+  .handler(async ({ data, context }): Promise<{ ok: true }> => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const sb = context.supabase as any;
+    const patch: Record<string, unknown> = { user_id: context.userId };
+    if (data.defaultModel !== undefined) patch["default_model"] = data.defaultModel;
+    if (data.autoApprove !== undefined) patch["auto_approve"] = data.autoApprove;
+    if (data.toolApprovals !== undefined) patch["tool_approvals"] = data.toolApprovals;
+    const { error } = await sb.from("user_settings").upsert(patch);
     if (error) throw new Error(error.message);
     return { ok: true };
   });
+

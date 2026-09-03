@@ -1,11 +1,11 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { X, Trash2, PlugZap, Loader2, CheckCircle2, XCircle, KeyRound, User, Bot } from "lucide-react";
 import { toast } from "sonner";
 import { PROVIDERS, providerById, type ProviderId } from "@/lib/providers/catalog";
-import { deleteKey, listKeys, listModelsForKey, saveKey } from "@/lib/keys.functions";
+import { deleteKey, getSettings, listKeys, listModelsForKey, saveKey, updateSettings } from "@/lib/keys.functions";
 import { useAuth } from "@/hooks/useAuth";
 import { cn } from "@/lib/utils";
 
@@ -258,12 +258,109 @@ function ProvidersTab() {
 }
 
 function AgentTab() {
+  const [autoApprove, setAutoApprove] = useState(false);
+  const [toolApprovals, setToolApprovals] = useState<Record<string, boolean>>({});
+  const [saving, setSaving] = useState(false);
+  const fetchSettings = useServerFn(getSettings);
+  const saveSettings = useServerFn(updateSettings);
+
+  useEffect(() => {
+    let mounted = true;
+    fetchSettings().then(
+      (s) => {
+        if (!mounted) return;
+        setAutoApprove(s.autoApprove);
+        setToolApprovals(s.toolApprovals);
+      },
+      () => undefined,
+    );
+    return () => {
+      mounted = false;
+    };
+  }, [fetchSettings]);
+
+  const onToggle = (name: string, value: boolean) => {
+    setToolApprovals((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const onSave = async () => {
+    setSaving(true);
+    try {
+      await saveSettings({ data: { autoApprove, toolApprovals } });
+      toast.success("Agent settings saved");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Save failed");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <div>
       <h2 className="text-[18px] font-semibold">Agent</h2>
       <p className="mt-1 text-muted-foreground">
-        Auto-approve and tool permissions arrive with the agent in the next update.
+        Per-tool auto-approval. When a tool is off, the agent pauses and asks before running it.
       </p>
+
+      <div className="mt-5 rounded-md border border-border bg-chrome p-4">
+        <label className="flex cursor-pointer items-start gap-2 text-[13px]">
+          <input
+            type="checkbox"
+            checked={autoApprove}
+            onChange={(e) => setAutoApprove(e.target.checked)}
+            className="mt-0.5"
+          />
+          <div>
+            <div className="font-medium">Approve all tools by default</div>
+            <div className="text-[12px] text-muted-foreground">
+              When on, every tool runs without asking. The per-tool toggles below take precedence.
+            </div>
+          </div>
+        </label>
+      </div>
+
+      <h3 className="mb-2 mt-6 text-[13px] font-semibold uppercase tracking-wide text-muted-foreground">
+        Per-tool auto-approve
+      </h3>
+      <ul className="flex flex-col gap-2">
+        {[
+          { name: "read_file", label: "read_file", desc: "Read a file's contents", safe: true },
+          { name: "list_dir", label: "list_dir", desc: "List a directory", safe: true },
+          { name: "search_files", label: "search_files", desc: "Search the workspace", safe: true },
+          { name: "apply_patch", label: "apply_patch", desc: "Edit a file (queued for review)", safe: false },
+          { name: "run_command", label: "run_command", desc: "Spawn a shell command", safe: false },
+        ].map((t) => {
+          const v = toolApprovals[t.name] ?? t.safe;
+          return (
+            <li
+              key={t.name}
+              className="flex items-center gap-3 rounded-md border border-border bg-chrome px-3 py-2"
+            >
+              <input
+                id={`tool-${t.name}`}
+                type="checkbox"
+                checked={Boolean(v)}
+                onChange={(e) => onToggle(t.name, e.target.checked)}
+              />
+              <label htmlFor={`tool-${t.name}`} className="flex-1 cursor-pointer">
+                <div className="font-mono text-[13px]">{t.label}</div>
+                <div className="text-[12px] text-muted-foreground">{t.desc}</div>
+              </label>
+              <span className="text-[11px] text-muted-foreground">
+                default: {t.safe ? "on" : "off"}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+
+      <button
+        onClick={() => void onSave()}
+        disabled={saving}
+        className="mt-5 h-8 rounded-[3px] bg-primary px-4 text-[13px] text-primary-foreground hover:bg-primary-hover disabled:opacity-50"
+      >
+        {saving ? "Saving…" : "Save"}
+      </button>
     </div>
   );
 }

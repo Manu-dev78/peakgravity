@@ -1,0 +1,135 @@
+name: Release desktop builds
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to release (e.g. v0.1.0-pre.1). Leave empty for a draft from the current commit."
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Cache Bun
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile --ignore-scripts
+        env:
+          # electron-builder downloads the electron binary post-install; we
+          # run that explicitly later in the cache step to avoid surprising
+          # network access in `bun install`.
+          ELECTRON_SKIP_BINARY_DOWNLOAD: 1
+
+      - name: Generate icon (Linux/macOS)
+        if: matrix.os != 'windows-latest'
+        run: |
+          pwsh -ExecutionPolicy Bypass -File scripts/generate-icon.ps1
+          pwsh -ExecutionPolicy Bypass -File scripts/generate-ico.ps1
+
+      - name: Generate icon (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          .\scripts\generate-icon.ps1
+          .\scripts\generate-ico.ps1
+
+      - name: Build Vite (renderer)
+        run: bun run build:web
+
+      - name: Build Electron main + preload
+        run: bun run build:electron
+
+      - name: Package (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: bun run dist:linux
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Package (Windows)
+        if: matrix.os == 'windows-latest'
+        run: bun run dist:win
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Package (macOS)
+        if: matrix.os == 'macos-latest'
+        run: bun run dist:mac
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Code signing is intentionally off until a developer cert is wired
+          # up. Re-enable CSC_LINK / CSC_KEY_PASSWORD when ready.
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: peakgravity-${{ matrix.os }}
+          path: |
+            electron/release/*.exe
+            electron/release/*.dmg
+            electron/release/*.zip
+            electron/release/*.AppImage
+            electron/release/*.deb
+            electron/release/*.rpm
+            electron/release/latest*.yml
+          if-no-files-found: ignore
+          retention-days: 14
+
+  publish:
+    name: Publish GitHub release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create pre-release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          prerelease: ${{ contains(github.ref_name, 'pre') || contains(github.ref_name, 'rc') || contains(github.ref_name, 'beta') }}
+          draft: false
+          fail_on_unmatched_files: true
+          files: |
+            artifacts/**/*.exe
+            artifacts/**/*.dmg
+            artifacts/**/*.zip
+            artifacts/**/*.AppImage
+            artifacts/**/*.deb
+            artifacts/**/*.rpm
+            artifacts/**/latest*.yml
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,6 +1,5 @@
 import {
   ChevronDown,
-  LayoutPanelLeft,
   PanelBottom,
   PanelLeft,
   PanelRight,
@@ -62,6 +61,7 @@ export function TitleBar() {
   const electron = isElectron();
   const initials = (user?.email ?? "pg").slice(0, 2).toUpperCase();
   const title = workspace ? `${workspace.name} - PeakGravity IDE` : "PeakGravity IDE";
+  const isMac = typeof navigator !== "undefined" && /Mac/i.test(navigator.platform);
 
   useEffect(() => {
     if (!electron) return;
@@ -79,8 +79,27 @@ export function TitleBar() {
     };
   }, [electron]);
 
+  const openCommandPalette = () => {
+    window.dispatchEvent(new CustomEvent("pg:command-palette"));
+  };
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "p") {
+        e.preventDefault();
+        openCommandPalette();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   return (
-    <header className="drag-region relative flex h-[38px] shrink-0 select-none items-center bg-chrome text-chrome-foreground">
+    <header
+      data-platform={isMac ? "mac" : "win"}
+      className="drag-region relative flex h-[38px] shrink-0 select-none items-center bg-chrome text-chrome-foreground"
+    >
+      {isMac && <div aria-hidden className="no-drag h-full w-[78px] shrink-0" />}
       <div className="flex items-center pl-3">
         <Logo size={18} className="text-primary" />
       </div>
@@ -97,9 +116,6 @@ export function TitleBar() {
       </div>
 
       <div className="ml-auto flex items-center gap-0.5 pr-1">
-        <IconBtn title="Customize layout">
-          <LayoutPanelLeft size={16} />
-        </IconBtn>
         <IconBtn title="Toggle primary side bar (Ctrl+B)" active={sidebarOpen} onClick={toggleSidebar}>
           <PanelLeft size={16} />
         </IconBtn>
@@ -109,7 +125,7 @@ export function TitleBar() {
         <IconBtn title="Toggle agent panel" active={agentOpen} onClick={() => setAgentOpen(!agentOpen)}>
           <PanelRight size={16} />
         </IconBtn>
-        <IconBtn title="Search (Ctrl+Shift+P)">
+        <IconBtn title="Search / Command Palette (Ctrl+Shift+P)" onClick={openCommandPalette}>
           <Search size={16} />
         </IconBtn>
         <span className="mx-1 h-4 w-px bg-border" />
@@ -129,7 +145,7 @@ export function TitleBar() {
           </span>
           <ChevronDown size={12} />
         </button>
-        <span className="mx-1 h-4 w-px bg-border" />
+        {!isMac && <span className="mx-1 h-4 w-px bg-border" />}
         {electron ? (
           <>
             <IconBtn
@@ -162,7 +178,10 @@ export function TitleBar() {
             <IconBtn title="Maximize" className="w-10 rounded-none hover:bg-accent">
               <Square size={12} />
             </IconBtn>
-            <IconBtn title="Close" className="w-10 rounded-none hover:bg-destructive hover:text-destructive-foreground">
+            <IconBtn
+              title="Close"
+              className="w-10 rounded-none hover:bg-destructive hover:text-destructive-foreground"
+            >
               <X size={16} />
             </IconBtn>
           </>
