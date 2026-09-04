@@ -40,7 +40,7 @@ interface ConversationState {
   deleteThread: (id: string) => Promise<void>;
   rename: (id: string, title: string) => Promise<void>;
   /** Optimistically append a user message and persist it. */
-  appendUserMessage: (content: string, mentions: { path: string; start: number; end: number }[]) => Promise<string | null>;
+  appendUserMessage: (content: string, mentions: { path: string; start: number; end: number }[], threadId?: string) => Promise<string | null>;
   /** Optimistically append an assistant message and start streaming deltas. */
   startAssistant: (id: string) => string;
   /** Append a delta to the currently-streaming assistant message. */
@@ -179,14 +179,21 @@ export function ConversationProvider({ children }: { children: ReactNode }) {
     async (
       content: string,
       mentions: { path: string; start: number; end: number }[],
+      threadId?: string,
     ): Promise<string | null> => {
-      if (!activeThreadId || !active) return null;
+      const id = threadId ?? activeThreadId;
+      if (!id) return null;
       const optimistic: ChatMessageText = { role: "user", content };
-      setActiveState({ ...active, busy: true, messages: [...active.messages, optimistic] });
+      setActiveState((cur) => {
+        const base = cur && cur.id === id
+          ? cur
+          : { id, title: "", modelRef: null, createdAt: "", updatedAt: "", messages: [], loading: false, busy: false };
+        return { ...base, busy: true, messages: [...base.messages, optimistic] };
+      });
       try {
         const res = await appendMut({
           data: {
-            conversationId: activeThreadId,
+            conversationId: id,
             role: "user",
             content,
             mentions,
@@ -194,7 +201,7 @@ export function ConversationProvider({ children }: { children: ReactNode }) {
           },
         });
         setActiveState((cur) =>
-          cur && cur.id === activeThreadId
+          cur && cur.id === id
             ? { ...cur, updatedAt: res.conversationUpdatedAt, title: res.conversationTitle }
             : cur,
         );
@@ -203,14 +210,14 @@ export function ConversationProvider({ children }: { children: ReactNode }) {
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Failed to save message");
         setActiveState((cur) =>
-          cur && cur.id === activeThreadId
+          cur && cur.id === id
             ? { ...cur, messages: cur.messages.slice(0, -1), busy: false }
             : cur,
         );
         return null;
       }
     },
-    [activeThreadId, active, appendMut, qc],
+    [activeThreadId, appendMut, qc],
   );
 
   const startAssistant = useCallback(
