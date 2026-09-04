@@ -78,22 +78,99 @@ export type Database = {
         Row: {
           auto_approve: boolean
           default_model: string | null
+          tool_approvals: Json
           updated_at: string
           user_id: string
         }
         Insert: {
           auto_approve?: boolean
           default_model?: string | null
+          tool_approvals?: Json
           updated_at?: string
           user_id: string
         }
         Update: {
           auto_approve?: boolean
           default_model?: string | null
+          tool_approvals?: Json
           updated_at?: string
           user_id?: string
         }
         Relationships: []
+      }
+      conversations: {
+        Row: {
+          id: string
+          user_id: string
+          title: string
+          model_ref: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          title?: string
+          model_ref?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          title?: string
+          model_ref?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      messages: {
+        Row: {
+          id: string
+          conversation_id: string
+          role: string
+          content: string
+          mentions: Json
+          tool_calls: Json | null
+          tool_call_id: string | null
+          name: string | null
+          model_ref: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          conversation_id: string
+          role: string
+          content: string
+          mentions?: Json
+          tool_calls?: Json | null
+          tool_call_id?: string | null
+          name?: string | null
+          model_ref?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          conversation_id?: string
+          role?: string
+          content?: string
+          mentions?: Json
+          tool_calls?: Json | null
+          tool_call_id?: string | null
+          name?: string | null
+          model_ref?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "messages_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          }
+        ]
       }
     }
     Views: {

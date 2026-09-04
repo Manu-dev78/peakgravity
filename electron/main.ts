@@ -8,7 +8,10 @@ import { registerWindowHandlers } from "./ipc/window";
 import { registerTerminalHandlers } from "./ipc/terminal";
 
 const isDev = !app.isPackaged && process.env["PEAKGRAVITY_DEV"] !== "0";
-const DEV_URL = process.env["PEAKGRAVITY_DEV_URL"] ?? "http://localhost:5173";
+// The Lovable Vite config pins the dev server to port 8080 (see
+// node_modules/@lovable.dev/vite-tanstack-config/dist/index.cjs). Allow it
+// to be overridden via PEAKGRAVITY_DEV_URL for users running plain Vite.
+const DEV_URL = process.env["PEAKGRAVITY_DEV_URL"] ?? "http://localhost:8080";
 
 let mainWindow: BrowserWindow | null = null;
 

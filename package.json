@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite dev",
-    "dev:electron": "concurrently -k -n vite,electron -c blue,magenta \"vite dev\" \"wait-on http://localhost:5173 && cross-env PEAKGRAVITY_DEV=1 electron electron/dist/main.js\"",
+    "electron:wait": "wait-on http://localhost:8080 && cross-env PEAKGRAVITY_DEV=1 electron electron/dist/main.js",
+    "dev:electron": "concurrently -k -n vite,electron -c blue,magenta \"vite dev\" \"bun run electron:wait\"",
     "build:electron": "tsc -p electron/tsconfig.json",
     "build:web": "vite build",
     "build": "vite build",

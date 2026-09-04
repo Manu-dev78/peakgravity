@@ -18,13 +18,30 @@ export function IdeShell() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "b") {
+      const mod = e.ctrlKey || e.metaKey;
+      if (mod && e.key.toLowerCase() === "b") {
         e.preventDefault();
         toggleSidebar();
+        return;
       }
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "j") {
+      if (mod && e.key.toLowerCase() === "j") {
         e.preventDefault();
         setTerminalOpen(!terminalOpen);
+        return;
+      }
+      if (mod && e.shiftKey && e.key.toLowerCase() === "s") {
+        // Save-all: same effect as the menu item, but always available even
+        // when the menu isn't open (e.g. inside a focused Monaco editor that
+        // intercepts Ctrl+S).
+        e.preventDefault();
+        window.dispatchEvent(new CustomEvent("pg:save-all"));
+        return;
+      }
+      if (mod && e.shiftKey && e.key.toLowerCase() === "e") {
+        // Toggle the explorer sidebar.
+        e.preventDefault();
+        toggleSidebar();
+        return;
       }
     };
     window.addEventListener("keydown", onKey);

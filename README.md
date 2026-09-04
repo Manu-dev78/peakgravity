@@ -1,57 +1,94 @@
-# Welcome to your Lovable project
+# PeakGravity
 
-This project was built with [Lovable](https://lovable.dev).
+Desktop AI code editor. Bring your own OpenAI / Anthropic / Gemini / OpenRouter
+key, let the agent read, search, edit, diff, and run code in your workspace,
+review every change before it lands on disk.
 
-## Build with Lovable
-
-Open your project in the [Lovable editor](https://lovable.dev) and keep building.
-
-- **Ship faster**: describe what you want to build and Lovable handles the code.
-- **Stay in sync**: connect the project to GitHub and every change made in Lovable is committed straight to your repository.
-- **Full ownership**: this code is yours. Push to your repository and your changes sync back into Lovable, ready for your next prompt.
-
-## Development
-
-Prefer working locally? You need Node.js and npm — [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating).
+## Quick start
 
 ```sh
-git clone <this-repository-url>
-cd <repository-name>
-npm i
-npm run dev
+# 1. Install deps
+bun install
+
+# 2. Copy the env template and fill in your Supabase project
+cp .env.example .env
+#    - SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY (from your Supabase dashboard)
+#    - PROVIDER_KEY_ENCRYPTION_SECRET (see comment in .env.example)
+
+# 3. Apply the database migrations
+#    (run the four files in supabase/migrations/ in order via psql
+#     or the Supabase dashboard's SQL editor)
+
+# 4. Run the desktop app
+bun run dev:electron
 ```
 
-## Built with
+The desktop app opens with a folder picker; pick a real directory, add a
+provider key in Settings → Providers, then chat with the agent.
 
-- TanStack Start
-- TypeScript
-- React
-- Tailwind CSS
+## Stack
+
+- TanStack Start · React 19 · TypeScript
+- Tailwind v4 · Radix UI
+- Monaco editor (via `@monaco-editor/react`)
+- Supabase (auth + Postgres) for the conversation + key-vault backend
+- Electron 33 for the desktop wrapper
+- `node-pty` is **not** yet wired; the terminal panel is a log view backed
+  by `child_process.spawn` (good for `npm test`, not for `vim`).
 
 ## Desktop builds
 
-Desktop installers are produced via `electron-builder` and published as
-GitHub pre-releases on every `v*` tag.
-
 ```sh
-# local dev (vite + electron with HMR)
+# dev (Vite + Electron with HMR)
 bun run dev:electron
 
-# build everything for a release
+# build the renderer
 bun run build:web
+
+# compile the Electron main + preload
 bun run build:electron
-bun run dist           # current OS
-bun run dist:win       # nsis + portable
+
+# produce an installer for the current OS
+bun run dist           # generic
+bun run dist:win       # NSIS + portable .exe
 bun run dist:mac       # dmg + zip (x64 + arm64)
 bun run dist:linux     # AppImage + deb + rpm
+
+# or just an unpacked dir for quick local testing
+bun run dist:dir
 ```
 
-The CI workflow is `.github/workflows/release.yml`: it runs on every
-`v*` tag, builds all three OS targets in parallel, attaches the
-artifacts to a GitHub pre-release (use `pre`/`rc`/`beta` in the tag
-to mark a release as pre-release).
+CI: `.github/workflows/release.yml`. It runs on every `v*` tag, builds all
+three OS targets in parallel, attaches the artifacts to a GitHub
+pre-release. Tags containing `pre` / `rc` / `beta` are marked pre-release
+automatically.
+
+## Keyboard shortcuts
+
+| Shortcut | Action |
+|---|---|
+| `Ctrl+O` / `Cmd+O` | Open folder |
+| `Ctrl+S` / `Cmd+S` | Save current file |
+| `Ctrl+Shift+S` | Save all dirty files |
+| `Ctrl+B` | Toggle side bar |
+| `Ctrl+J` | Toggle terminal panel |
+| `Ctrl+Shift+P` | Open command palette (placeholder) |
+| `Enter` in composer | Send agent message |
+| `Shift+Enter` in composer | Newline |
 
 ## Future work
 
-- **Anthropic `cache_control`** — add `cache_control: { type: "ephemeral" }` support on the system prompt and tool specs in `src/lib/providers/chat/anthropic.ts` so the agent can mark long-lived context (file mentions, repo summary) for prompt caching. Tracked inline as `TODO(cache-control)`.
-- **Interactive terminal panel** — the current `TerminalPanel` is a log view backed by `child_process.spawn`. Once `node-pty` builds on this machine (it needs MSVC for native bindings), wire it into `electron/ipc/terminal.ts` so the user can run `vim`, `htop`, and other TUIs. The agent's `run_command` tool already works against the current spawner.
+- **Anthropic `cache_control`** — add `cache_control: { type: "ephemeral" }`
+  support on the system prompt and tool specs in
+  `src/lib/providers/chat/anthropic.ts` so the agent can mark long-lived
+  context (file mentions, repo summary) for prompt caching. Tracked inline
+  as `TODO(cache-control)`.
+- **Interactive terminal panel** — the current `TerminalPanel` is a log
+  view backed by `child_process.spawn`. Once `node-pty` builds on this
+  machine (it needs MSVC for native bindings), wire it into
+  `electron/ipc/terminal.ts` so the user can run `vim`, `htop`, and other
+  TUIs. The agent's `run_command` tool already works against the current
+  spawner.
+- **Command palette** — the title-bar search button dispatches a
+  `pg:command-palette` event; no UI is wired yet. Trivial to add a `cmdk`
+  palette — `cmdk` is already a dependency.

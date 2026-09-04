@@ -60,20 +60,7 @@ export async function* streamAnthropicChat(req: ChatRequest): ChatEventStream {
     apiMessages.push({ role: m.role as "user" | "assistant", content: m.content });
   }
 
-  const body: Record<string, unknown> = {
-    model,
-    stream: true,
-    messages: apiMessages,
-    max_tokens: typeof maxTokens === "number" ? maxTokens : 4096,
-  };
-  if (systemParts.length > 0) body["system"] = systemParts.join("\n\n");
-  if (tools && tools.length > 0) {
-    body["tools"] = tools.map((t) => ({
-      name: t.name,
-      description: t.description,
-      input_schema: t.parameters,
-    }));
-  }
+  const wantsTools = !!(tools && tools.length > 0);
 
   const headers: Record<string, string> = {
     "content-type": "application/json",
@@ -83,24 +70,89 @@ export async function* streamAnthropicChat(req: ChatRequest): ChatEventStream {
     ...(extraHeaders ?? {}),
   };
 
-  const init: RequestInit = { method: "POST", headers, body: JSON.stringify(body) };
-  if (signal) init.signal = signal;
+  const buildBody = (withTools: boolean): Record<string, unknown> => {
+    const b: Record<string, unknown> = {
+      model,
+      stream: true,
+      messages: apiMessages,
+      max_tokens: typeof maxTokens === "number" ? maxTokens : 4096,
+    };
+    if (systemParts.length > 0) b["system"] = systemParts.join("\n\n");
+    if (withTools && tools && tools.length > 0) {
+      b["tools"] = tools.map((t) => ({
+        name: t.name,
+        description: t.description,
+        input_schema: t.parameters,
+      }));
+    }
+    return b;
+  };
 
-  const res = await fetch(`${baseUrl.replace(/\/$/, "")}/messages`, init);
+  // First attempt: with tools. If Anthropic rejects (e.g. some models don't
+  // support function calling), retry once without tools so the conversation
+  // still works.
+  const res = await postAnthropic(baseUrl, headers, buildBody(wantsTools), signal);
+  if (!res.ok && wantsTools && res.status === 400) {
+    const errBody = await res.text().catch(() => "");
+    if (mentionsToolSupport(errBody)) {
+      const fallback = await postAnthropic(baseUrl, headers, buildBody(false), signal);
+      if (!fallback.ok || !fallback.body) {
+        const t = await fallback.text().catch(() => "");
+        yield {
+          type: "error",
+          message: `${fallback.status} ${fallback.statusText || "Error"}${t ? `: ${t.slice(0, 400)}` : ""}`,
+        };
+        return;
+      }
+      yield* streamAnthropicChunks(fallback.body, signal);
+      return;
+    }
+    yield {
+      type: "error",
+      message: `${res.status} ${res.statusText || "Error"}${errBody ? `: ${errBody.slice(0, 400)}` : ""}`,
+    };
+    return;
+  }
   if (!res.ok || !res.body) {
     const text = await res.text().catch(() => "");
     yield {
       type: "error",
-      message: `${res.status} ${res.statusText}${text ? `: ${text.slice(0, 400)}` : ""}`,
+      message: `${res.status} ${res.statusText || "Error"}${text ? `: ${text.slice(0, 400)}` : ""}`,
     };
     return;
   }
+  yield* streamAnthropicChunks(res.body, signal);
+}
 
-  const reader = res.body.getReader();
+async function postAnthropic(
+  baseUrl: string,
+  headers: Record<string, string>,
+  body: Record<string, unknown>,
+  signal: AbortSignal | undefined,
+): Promise<Response> {
+  const init: RequestInit = { method: "POST", headers, body: JSON.stringify(body) };
+  if (signal) init.signal = signal;
+  return fetch(`${baseUrl.replace(/\/$/, "")}/messages`, init);
+}
+
+function mentionsToolSupport(errorBody: string): boolean {
+  const lower = errorBody.toLowerCase();
+  return (
+    lower.includes("tool") ||
+    lower.includes("function") ||
+    lower.includes("function calling") ||
+    lower.includes("does not support")
+  );
+}
+
+async function* streamAnthropicChunks(
+  body: ReadableStream<Uint8Array>,
+  signal: AbortSignal | undefined,
+): AsyncGenerator<ChatEvent, void, void> {
+  const reader = body.getReader();
   const decoder = new TextDecoder("utf-8");
   let buffer = "";
 
-  // tool_use blocks stream their JSON input across multiple deltas.
   const toolBuffers = new Map<number, { id: string; name: string; args: string }>();
   let inputTokens = 0;
   let outputTokens = 0;
@@ -111,7 +163,6 @@ export async function* streamAnthropicChat(req: ChatRequest): ChatEventStream {
       if (done) break;
       buffer += decoder.decode(value, { stream: true });
 
-      // Anthropic SSE: events separated by blank lines
       let idx;
       while ((idx = buffer.indexOf("\n\n")) !== -1) {
         const block = buffer.slice(0, idx);
@@ -145,7 +196,6 @@ export async function* streamAnthropicChat(req: ChatRequest): ChatEventStream {
     return;
   }
 
-  // Flush any pending tool_use buffers
   for (const buf of toolBuffers.values()) {
     if (buf.id && buf.name) {
       yield { type: "tool_call", id: buf.id, name: buf.name, arguments: buf.args };

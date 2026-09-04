@@ -1,9 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
-import { createClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { parseModelRef, providerById, type ProviderId } from "@/lib/providers/catalog";
 import { dispatchStream, withProtocol } from "@/lib/providers/chat/dispatch";
 import type { ChatMessageText, ChatToolSpec } from "@/lib/providers/chat/types";
+import type { Database } from "@/integrations/supabase/types";
 
 const messageSchema = z.object({
   role: z.enum(["system", "user", "assistant", "tool"]),
@@ -58,12 +59,16 @@ async function authenticate(request: Request) {
   const token = auth.slice("Bearer ".length).trim();
   if (!token || token.split(".").length !== 3) throw new Error("Unauthorized");
 
-  const supabase = createClient<unknown>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
-    global: {
-      headers: { Authorization: `Bearer ${token}` },
+  const supabase: SupabaseClient<Database> = createClient<Database>(
+    SUPABASE_URL,
+    SUPABASE_PUBLISHABLE_KEY,
+    {
+      global: {
+        headers: { Authorization: `Bearer ${token}` },
+      },
+      auth: { storage: undefined, persistSession: false, autoRefreshToken: false },
     },
-    auth: { storage: undefined, persistSession: false, autoRefreshToken: false },
-  });
+  );
   const { data, error } = await supabase.auth.getClaims(token);
   if (error || !data?.claims?.sub) throw new Error("Unauthorized");
   return { supabase, userId: data.claims.sub };
@@ -78,7 +83,22 @@ export const Route = createFileRoute("/api/chat")({
           const json = await request.json();
           body = bodySchema.parse(json);
         } catch (e) {
-          return jsonError(e instanceof Error ? e.message : "Invalid request body", 400);
+          const detail = e instanceof Error ? e.message : String(e);
+          // Log the failing body shape to make validation errors debuggable.
+          try {
+            const raw = await request.clone().json().catch(() => null);
+            const dump = `[api/chat] body validation failed: ${detail}\nraw=${JSON.stringify(raw)?.slice(0, 1500)}\n`;
+            console.error(dump);
+            try {
+              const fs = await import("node:fs/promises");
+              await fs.appendFile("electron/api-chat.log", dump + "\n").catch(() => undefined);
+            } catch {
+              /* ignore */
+            }
+          } catch {
+            console.error("[api/chat] body validation failed:", detail);
+          }
+          return jsonError(detail, 400);
         }
 
         const { supabase, userId } = await authenticate(request).catch((e: unknown) => {
@@ -89,21 +109,16 @@ export const Route = createFileRoute("/api/chat")({
         if (!ref) return jsonError("Invalid modelRef", 400);
 
         const { data: keyRow, error: keyErr } = await supabase
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          .from("provider_keys" as any)
+          .from("provider_keys")
           .select("id, provider, base_url, key_ciphertext, user_id")
           .eq("id", ref.keyId)
           .single();
         if (keyErr || !keyRow) return jsonError("Key not found", 404);
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        if ((keyRow as any).user_id !== userId) return jsonError("Forbidden", 403);
+        if (keyRow.user_id !== userId) return jsonError("Forbidden", 403);
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const keyProvider = (keyRow as any).provider as ProviderId;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const keyBaseUrl = (keyRow as any).base_url as string | null;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const keyCiphertext = (keyRow as any).key_ciphertext as string;
+        const keyProvider = keyRow.provider;
+        const keyBaseUrl = keyRow.base_url;
+        const keyCiphertext = keyRow.key_ciphertext;
 
         const info = providerById(keyProvider);
         const baseUrl = (keyBaseUrl ?? info.defaultBaseUrl).replace(/\/$/, "");

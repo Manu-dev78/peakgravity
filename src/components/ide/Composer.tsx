@@ -200,11 +200,7 @@ export function Composer() {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={onKey}
-          placeholder={
-            isElectron()
-              ? "Ask anything, @ to mention, / for actions"
-              : "Ask anything (model picker disabled on web preview)"
-          }
+          placeholder="Ask anything, @ to mention, / for actions"
           rows={1}
           className="block w-full resize-none bg-transparent px-3 pb-1 pt-3 text-[14px] leading-relaxed text-foreground placeholder:text-muted-foreground focus:outline-none"
         />

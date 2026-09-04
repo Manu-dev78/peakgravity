@@ -53,6 +53,28 @@ export function ModelPicker({ onOpenSettings }: { onOpenSettings: () => void }) 
     return parsed.modelId;
   }, [selectedModel, groups, keys.length]);
 
+  // If the currently selected model points at a key that has been deleted
+  // (or at a model that no longer exists), reset to "No model configured"
+  // so the agent doesn't try to call a keyId that returned 404.
+  useEffect(() => {
+    if (!selectedModel || selectedModel === "No model configured") return;
+    const parsed = parseModelRef(selectedModel);
+    if (!parsed) return;
+    const group = groups.find((g) => g.key.id === parsed.keyId);
+    if (!group) {
+      setSelectedModel("No model configured");
+      return;
+    }
+    if (group.error) {
+      // Auth/key failure — keep the selection but the user will see the
+      // error inline in the popover and can re-pick.
+      return;
+    }
+    if (!group.loading && !group.models.some((m) => m.id === parsed.modelId)) {
+      setSelectedModel("No model configured");
+    }
+  }, [selectedModel, groups, setSelectedModel]);
+
   const filtered = groups
     .map((g) => ({
       ...g,

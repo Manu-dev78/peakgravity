@@ -37,85 +37,64 @@ const toolCallSchema = z.object({
   arguments: z.string(),
 });
 
-interface SupabaseAny {
-  from: (table: string) => {
-    select: (cols: string) => {
-      eq: (col: string, val: unknown) => {
-        order: (
-          col: string,
-          opts?: { ascending?: boolean },
-        ) => Promise<{ data: unknown[] | null; error: { message: string } | null }>;
-        single: () => Promise<{
-          data: Record<string, unknown> | null;
-          error: { message: string } | null;
-        }>;
-      };
-      order: (
-        col: string,
-        opts?: { ascending?: boolean },
-      ) => Promise<{ data: unknown[] | null; error: { message: string } | null }>;
-      single: () => Promise<{
-        data: Record<string, unknown> | null;
-        error: { message: string } | null;
-      }>;
-    };
-    insert: (row: Record<string, unknown> | Record<string, unknown>[]) => {
-      select: (cols: string) => {
-        single: () => Promise<{
-          data: Record<string, unknown> | null;
-          error: { message: string } | null;
-        }>;
-      };
-    };
-    update: (patch: Record<string, unknown>) => {
-      eq: (col: string, val: unknown) => {
-        select: (cols: string) => {
-          single: () => Promise<{
-            data: Record<string, unknown> | null;
-            error: { message: string } | null;
-          }>;
-        };
-      } & Promise<{ data: unknown; error: { message: string } | null }>;
-    };
-    delete: () => {
-      eq: (
-        col: string,
-        val: unknown,
-      ) => Promise<{ data: unknown; error: { message: string } | null }>;
-    };
+interface ConversationRow {
+  id: string;
+  user_id: string;
+  title: string;
+  model_ref: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+interface MessageRow {
+  id: string;
+  conversation_id: string;
+  role: string;
+  content: string;
+  mentions: unknown;
+  tool_calls: unknown;
+  tool_call_id: string | null;
+  name: string | null;
+  model_ref: string | null;
+  created_at: string;
+}
+
+function mapConversation(c: ConversationRow): ConversationSummary {
+  return {
+    id: c.id,
+    title: c.title,
+    modelRef: c.model_ref,
+    createdAt: c.created_at,
+    updatedAt: c.updated_at,
   };
 }
 
-function sbOf(ctx: { supabase: unknown }): SupabaseAny {
-  // The Database type is auto-generated from the existing tables; new tables
-  // (conversations, messages) need a `supabase gen types` run before this
-  // cast can be removed.
-  return ctx.supabase as unknown as SupabaseAny;
+function mapMessage(m: MessageRow): StoredMessage {
+  return {
+    id: m.id,
+    conversationId: m.conversation_id,
+    role: m.role as StoredMessage["role"],
+    content: m.content,
+    mentions: Array.isArray(m.mentions) ? (m.mentions as StoredMessage["mentions"]) : [],
+    toolCalls: Array.isArray(m.tool_calls)
+      ? (m.tool_calls as StoredMessage["toolCalls"])
+      : null,
+    toolCallId: m.tool_call_id,
+    name: m.name,
+    modelRef: m.model_ref,
+    createdAt: m.created_at,
+  };
 }
 
 export const listConversations = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }): Promise<ConversationSummary[]> => {
-    const sb = sbOf(context);
-    const { data, error } = await sb
+    const { data, error } = await context.supabase
       .from("conversations")
-      .select("id, title, model_ref, created_at, updated_at")
+      .select("id, user_id, title, model_ref, created_at, updated_at")
       .order("updated_at", { ascending: false });
     if (error) throw new Error(error.message);
-    const list = (data ?? []) as Array<{
-      id: string;
-      title: string;
-      model_ref: string | null;
-      created_at: string;
-      updated_at: string;
-    }>;
-    return list.map((c) => ({
-      id: c.id,
-      title: c.title,
-      modelRef: c.model_ref,
-      createdAt: c.created_at,
-      updatedAt: c.updated_at,
-    }));
+    return ((data ?? []) as unknown as ConversationRow[]).map(mapConversation);
   });
 
 export const getConversation = createServerFn({ method: "GET" })
@@ -126,16 +105,16 @@ export const getConversation = createServerFn({ method: "GET" })
       data,
       context,
     }): Promise<{ conversation: ConversationSummary; messages: StoredMessage[] }> => {
-      const sb = sbOf(context);
-      const { data: row, error: convErr } = await sb
+      const { data: row, error: convErr } = await context.supabase
         .from("conversations")
         .select("id, user_id, title, model_ref, created_at, updated_at")
         .eq("id", data.id)
         .single();
       if (convErr || !row) throw new Error("Conversation not found");
-      if (row["user_id"] !== context.userId) throw new Error("Forbidden");
+      const conv = row as unknown as ConversationRow;
+      if (conv.user_id !== context.userId) throw new Error("Forbidden");
 
-      const { data: msgs, error: msgErr } = await sb
+      const { data: msgs, error: msgErr } = await context.supabase
         .from("messages")
         .select(
           "id, conversation_id, role, content, mentions, tool_calls, tool_call_id, name, model_ref, created_at",
@@ -143,40 +122,10 @@ export const getConversation = createServerFn({ method: "GET" })
         .eq("conversation_id", data.id)
         .order("created_at");
       if (msgErr) throw new Error(msgErr.message);
-      const msgList = (msgs ?? []) as Array<{
-        id: string;
-        conversation_id: string;
-        role: string;
-        content: string;
-        mentions: unknown;
-        tool_calls: unknown;
-        tool_call_id: string | null;
-        name: string | null;
-        model_ref: string | null;
-        created_at: string;
-      }>;
+
       return {
-        conversation: {
-          id: row["id"] as string,
-          title: row["title"] as string,
-          modelRef: (row["model_ref"] as string | null) ?? null,
-          createdAt: row["created_at"] as string,
-          updatedAt: row["updated_at"] as string,
-        },
-        messages: msgList.map((m) => ({
-          id: m.id,
-          conversationId: m.conversation_id,
-          role: m.role as StoredMessage["role"],
-          content: m.content,
-          mentions: Array.isArray(m.mentions) ? (m.mentions as StoredMessage["mentions"]) : [],
-          toolCalls: Array.isArray(m.tool_calls)
-            ? (m.tool_calls as StoredMessage["toolCalls"])
-            : null,
-          toolCallId: m.tool_call_id,
-          name: m.name,
-          modelRef: m.model_ref,
-          createdAt: m.created_at,
-        })),
+        conversation: mapConversation(conv),
+        messages: ((msgs ?? []) as unknown as MessageRow[]).map(mapMessage),
       };
     },
   );
@@ -192,19 +141,18 @@ export const createConversation = createServerFn({ method: "POST" })
       .parse(input),
   )
   .handler(async ({ data, context }): Promise<{ id: string }> => {
-    const sb = sbOf(context);
-    const insert: Record<string, unknown> = {
+    const insert: { user_id: string; title?: string; model_ref?: string | null } = {
       user_id: context.userId,
       title: data.title ?? "New chat",
     };
-    if (data.modelRef !== undefined) insert["model_ref"] = data.modelRef;
-    const { data: row, error } = await sb
+    if (data.modelRef !== undefined) insert.model_ref = data.modelRef;
+    const { data: row, error } = await context.supabase
       .from("conversations")
       .insert(insert)
       .select("id")
       .single();
     if (error || !row) throw new Error(error?.message ?? "Failed to create conversation");
-    return { id: row["id"] as string };
+    return { id: (row as { id: string }).id };
   });
 
 export const renameConversation = createServerFn({ method: "POST" })
@@ -213,12 +161,12 @@ export const renameConversation = createServerFn({ method: "POST" })
     z.object({ id: z.string().uuid(), title: z.string().trim().min(1).max(200) }).parse(input),
   )
   .handler(async ({ data, context }): Promise<{ ok: true }> => {
-    const sb = sbOf(context);
-    const { error } = await sb
+    const { error } = await context.supabase
       .from("conversations")
       .update({ title: data.title })
       .eq("id", data.id);
     if (error) throw new Error(error.message);
+    void context;
     return { ok: true };
   });
 
@@ -226,9 +174,9 @@ export const deleteConversation = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => z.object({ id: z.string().uuid() }).parse(input))
   .handler(async ({ data, context }): Promise<{ ok: true }> => {
-    const sb = sbOf(context);
-    const { error } = await sb.from("conversations").delete().eq("id", data.id);
+    const { error } = await context.supabase.from("conversations").delete().eq("id", data.id);
     if (error) throw new Error(error.message);
+    void context;
     return { ok: true };
   });
 
@@ -255,49 +203,48 @@ export const appendMessage = createServerFn({ method: "POST" })
       data,
       context,
     }): Promise<{ id: string; conversationUpdatedAt: string; conversationTitle: string }> => {
-      const sb = sbOf(context);
-      const { data: conv, error: convErr } = await sb
+      const { data: conv, error: convErr } = await context.supabase
         .from("conversations")
         .select("id, user_id, title")
         .eq("id", data.conversationId)
         .single();
       if (convErr || !conv) throw new Error("Conversation not found");
-      if (conv["user_id"] !== context.userId) throw new Error("Forbidden");
+      const convRow = conv as unknown as { user_id: string; title: string };
+      if (convRow.user_id !== context.userId) throw new Error("Forbidden");
 
-      const insert: Record<string, unknown> = {
-        conversation_id: data.conversationId,
-        role: data.role,
-        content: data.content,
-        mentions: data.mentions,
-      };
-      if (data.toolCalls !== undefined) insert["tool_calls"] = data.toolCalls;
-      if (data.toolCallId !== undefined) insert["tool_call_id"] = data.toolCallId;
-      if (data.name !== undefined) insert["name"] = data.name;
-      if (data.modelRef !== undefined) insert["model_ref"] = data.modelRef;
-
-      const { data: row, error: msgErr } = await sb
+      const { data: row, error: msgErr } = await context.supabase
         .from("messages")
-        .insert(insert)
+        .insert({
+          conversation_id: data.conversationId,
+          role: data.role,
+          content: data.content,
+          mentions: data.mentions,
+          ...(data.toolCalls !== undefined ? { tool_calls: data.toolCalls } : {}),
+          ...(data.toolCallId !== undefined ? { tool_call_id: data.toolCallId } : {}),
+          ...(data.name !== undefined ? { name: data.name } : {}),
+          ...(data.modelRef !== undefined ? { model_ref: data.modelRef } : {}),
+        })
         .select("id")
         .single();
       if (msgErr || !row) throw new Error(msgErr?.message ?? "Failed to save message");
 
-      const convPatch: Record<string, unknown> = { updated_at: new Date().toISOString() };
-      if (data.titleHint && (conv["title"] === "New chat" || !conv["title"])) {
-        convPatch["title"] = data.titleHint;
+      const convPatch: { updated_at: string; title?: string } = { updated_at: new Date().toISOString() };
+      if (data.titleHint && (convRow.title === "New chat" || !convRow.title)) {
+        convPatch.title = data.titleHint;
       }
-      const { data: convRow, error: updErr } = await sb
+      const { data: convUpdated, error: updErr } = await context.supabase
         .from("conversations")
         .update(convPatch)
         .eq("id", data.conversationId)
         .select("updated_at, title")
         .single();
       if (updErr) throw new Error(updErr.message);
+      if (!convUpdated) throw new Error("Conversation not found after update");
 
       return {
-        id: row["id"] as string,
-        conversationUpdatedAt: convRow?.["updated_at"] as string,
-        conversationTitle: convRow?.["title"] as string,
+        id: (row as { id: string }).id,
+        conversationUpdatedAt: convUpdated.updated_at,
+        conversationTitle: convUpdated.title,
       };
     },
   );

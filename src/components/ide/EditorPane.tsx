@@ -71,19 +71,6 @@ export function EditorPane() {
     monaco.editor.setTheme("peakgravity-dark");
   }, []);
 
-  // Save with Ctrl+S
-  useEffect(() => {
-    if (!tab || tab.readOnly) return;
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
-        e.preventDefault();
-        void saveActive();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [tab, saveActive]);
-
   if (!tab) {
     return (
       <div className="flex h-full items-center justify-center bg-editor text-[13px] text-muted-foreground">
@@ -150,12 +137,12 @@ export function EditorPane() {
           padding: { top: 8, bottom: 8 },
         }}
       />
-      {isElectron() && tab.dirty && (
+      {isElectron() && tab.dirty && !tab.saving && (
         <button
           onClick={() => void saveActive()}
           className="absolute bottom-3 right-3 z-10 flex items-center gap-1 rounded-[3px] bg-primary px-3 py-1.5 text-[12px] text-primary-foreground shadow-lg hover:bg-primary-hover"
         >
-          <Save size={12} /> Save (Ctrl+S)
+          <Save size={12} /> Save
         </button>
       )}
     </div>

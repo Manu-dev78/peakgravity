@@ -16,6 +16,11 @@ dist-ssr
 .nitro
 *.local
 
+# Local env (real keys + encryption secret). Use .env.example as a template.
+.env
+.env.*
+!.env.example
+
 # Electron desktop build
 electron/dist
 electron/node_modules

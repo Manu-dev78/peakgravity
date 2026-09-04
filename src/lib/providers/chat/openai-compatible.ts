@@ -7,18 +7,23 @@ import type { ChatEvent, ChatEventStream, ChatRequest, ChatMessageText, ChatTool
 export async function* streamOpenAIChat(req: ChatRequest): ChatEventStream {
   const { baseUrl, apiKey, model, messages, signal, tools, maxTokens, extraHeaders } = req;
 
-  const body: Record<string, unknown> = {
+  const baseBody: Record<string, unknown> = {
     model,
     stream: true,
     messages: messages.map(toOpenAIMessage),
   };
-  if (tools && tools.length > 0) {
-    body["tools"] = tools.map((t) => ({
-      type: "function",
-      function: { name: t.name, description: t.description, parameters: t.parameters },
-    }));
-  }
-  if (typeof maxTokens === "number") body["max_tokens"] = maxTokens;
+  if (typeof maxTokens === "number") baseBody["max_tokens"] = maxTokens;
+
+  const buildBody = (withTools: boolean): Record<string, unknown> => {
+    const b: Record<string, unknown> = { ...baseBody };
+    if (withTools && tools && tools.length > 0) {
+      b["tools"] = tools.map((t) => ({
+        type: "function",
+        function: { name: t.name, description: t.description, parameters: t.parameters },
+      }));
+    }
+    return b;
+  };
 
   const headers: Record<string, string> = {
     "content-type": "application/json",
@@ -27,25 +32,80 @@ export async function* streamOpenAIChat(req: ChatRequest): ChatEventStream {
     ...(extraHeaders ?? {}),
   };
 
+  // First attempt: with tools. Some free / older models reject the `tools`
+  // field outright with a 400; if that happens and we have tools, retry
+  // once without them so the conversation still works (the agent just
+  // can't call functions for this model).
+  const wantsTools = !!(tools && tools.length > 0);
+  const res = await postChat(baseUrl, headers, buildBody(wantsTools), signal);
+  if (!res.ok && wantsTools && res.status === 400) {
+    const errBody = await res.text().catch(() => "");
+    if (mentionsToolSupport(errBody)) {
+      // Retry without tools. The model just doesn't support function calling.
+      const fallback = await postChat(baseUrl, headers, buildBody(false), signal);
+      if (!fallback.ok || !fallback.body) {
+        const t = await fallback.text().catch(() => "");
+        yield {
+          type: "error",
+          message: `${fallback.status} ${fallback.statusText || "Error"}${t ? `: ${t.slice(0, 400)}` : ""}`,
+        };
+        return;
+      }
+      yield* streamChunks(fallback.body, signal);
+      return;
+    }
+    // Not a tools complaint — surface the original 400.
+    yield {
+      type: "error",
+      message: `${res.status} ${res.statusText || "Error"}${errBody ? `: ${errBody.slice(0, 400)}` : ""}`,
+    };
+    return;
+  }
+  if (!res.ok || !res.body) {
+    const text = await res.text().catch(() => "");
+    yield {
+      type: "error",
+      message: `${res.status} ${res.statusText || "Error"}${text ? `: ${text.slice(0, 400)}` : ""}`,
+    };
+    return;
+  }
+  yield* streamChunks(res.body, signal);
+}
+
+async function postChat(
+  baseUrl: string,
+  headers: Record<string, string>,
+  body: Record<string, unknown>,
+  signal: AbortSignal | undefined,
+): Promise<Response> {
   const init: RequestInit = {
     method: "POST",
     headers,
     body: JSON.stringify(body),
   };
   if (signal) init.signal = signal;
+  return fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, init);
+}
 
-  const res = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, init);
-  if (!res.ok || !res.body) {
-    const text = await res.text().catch(() => "");
-    yield { type: "error", message: `${res.status} ${res.statusText}${text ? `: ${text.slice(0, 400)}` : ""}` };
-    return;
-  }
+function mentionsToolSupport(errorBody: string): boolean {
+  const lower = errorBody.toLowerCase();
+  return (
+    lower.includes("tool") ||
+    lower.includes("function") ||
+    lower.includes("tools is not supported") ||
+    lower.includes("function calling") ||
+    lower.includes("does not support")
+  );
+}
 
-  const reader = res.body.getReader();
+async function* streamChunks(
+  body: ReadableStream<Uint8Array>,
+  signal: AbortSignal | undefined,
+): AsyncGenerator<ChatEvent, void, void> {
+  const reader = body.getReader();
   const decoder = new TextDecoder("utf-8");
   let buffer = "";
 
-  // Tracks tool-call state: by tool call id, the accumulated name + args.
   const tcState = new Map<string, { name: string; args: string }>();
   let usage: { inputTokens: number; outputTokens: number } | null = null;
 
@@ -55,7 +115,6 @@ export async function* streamOpenAIChat(req: ChatRequest): ChatEventStream {
       if (done) break;
       buffer += decoder.decode(value, { stream: true });
 
-      // SSE: events separated by blank lines
       let idx;
       while ((idx = buffer.indexOf("\n\n")) !== -1) {
         const block = buffer.slice(0, idx);
@@ -107,7 +166,6 @@ export async function* streamOpenAIChat(req: ChatRequest): ChatEventStream {
             }
           }
           if (choice.finish_reason) {
-            // flush completed tool calls
             for (const [id, state] of tcState) {
               if (state.name) {
                 yield { type: "tool_call", id, name: state.name, arguments: state.args };
@@ -125,7 +183,6 @@ export async function* streamOpenAIChat(req: ChatRequest): ChatEventStream {
     yield { type: "error", message: e instanceof Error ? e.message : "Stream failed" };
     return;
   }
-  // Final flush if stream ended without finish_reason
   for (const [id, state] of tcState) {
     if (state.name) yield { type: "tool_call", id, name: state.name, arguments: state.args };
   }

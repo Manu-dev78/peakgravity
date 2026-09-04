@@ -376,7 +376,11 @@ function streamChat(args: {
       });
       if (!res.ok || !res.body) {
         const text = await res.text().catch(() => "");
-        yield { type: "error", message: `${res.status} ${res.statusText}${text ? `: ${text.slice(0, 300)}` : ""}` };
+        console.error(`[agent/loop] /api/chat failed: ${res.status}`, text);
+        yield {
+          type: "error",
+          message: `${res.status} ${res.statusText || "Error"}${text ? `: ${text.slice(0, 800)}` : ""}`,
+        };
         return;
       }
       yield* parseSse(res.body);
