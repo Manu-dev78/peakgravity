@@ -57,11 +57,11 @@ export function useChatStream(): UseChatStream {
         toast.error("Pick a model in the agent panel first");
         return;
       }
-      if (!conv.activeThreadId) {
-        const id = await conv.newConversation(selectedModel);
-        if (!id) return;
+      let threadId = conv.activeThreadId;
+      if (!threadId) {
+        threadId = await conv.newConversation(selectedModel);
+        if (!threadId) return;
       }
-      const threadId = conv.activeThreadId ?? (await conv.newConversation(selectedModel));
       if (!threadId) return;
       const root = fs.folder?.path ?? null;
       const mentions = parseMentions(text, root);
@@ -72,6 +72,7 @@ export function useChatStream(): UseChatStream {
       const storedId = await conv.appendUserMessage(
         text,
         mentions.map((m) => ({ path: m.path, start: m.start, end: m.end })),
+        threadId,
       );
       if (!storedId) {
         // appendUserMessage already toasts
@@ -80,7 +81,15 @@ export function useChatStream(): UseChatStream {
 
       // Build the messages array we send to the server.
       const history = conv.active?.messages ?? [];
-      const messages = buildRequestMessages(history, ctxBlock);
+      // React state may still contain the pre-send history. Include the
+      // current user turn explicitly so empty/new threads never send [] to
+      // the API (which is rejected by the server schema with HTTP 400).
+      const last = history[history.length - 1];
+      const requestHistory =
+        last?.role === "user" && last.content === text
+          ? history
+          : [...history, { role: "user", content: text }];
+      const messages = buildRequestMessages(requestHistory, ctxBlock);
 
       setError(null);
       setBusy(true);
