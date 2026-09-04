@@ -114,6 +114,9 @@ async function* streamChunks(
       const { done, value } = await reader.read();
       if (done) break;
       buffer += decoder.decode(value, { stream: true });
+      // Providers may emit SSE records with CRLF separators. Normalize
+      // them before looking for the blank line that ends an event.
+      buffer = buffer.replace(/\r\n/g, "\n");
 
       let idx;
       while ((idx = buffer.indexOf("\n\n")) !== -1) {
