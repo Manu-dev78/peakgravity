@@ -7,13 +7,14 @@ import { AgentPanel } from "./AgentPanel";
 import { WelcomeScreen } from "./WelcomeScreen";
 import { EditorTabs } from "./EditorTabs";
 import { EditorPane } from "./EditorPane";
-import { TerminalPanel } from "./TerminalPanel";
+import { BottomPanel } from "./BottomPanel";
 import { useIde } from "@/lib/ide-store";
 import { useFsStore } from "@/lib/fs-store";
 import { isElectron, pickFolder } from "@/lib/electron-api";
 
 export function IdeShell() {
-  const { sidebarOpen, agentOpen, toggleSidebar, setTerminalOpen, terminalOpen, openWorkspace } = useIde();
+  const { sidebarOpen, agentOpen, toggleSidebar, setBottomOpen, setBottomTab, bottomOpen, openWorkspace } =
+    useIde();
   const { folder, tabs, activeTab } = useFsStore();
 
   useEffect(() => {
@@ -26,7 +27,7 @@ export function IdeShell() {
       }
       if (mod && e.key.toLowerCase() === "j") {
         e.preventDefault();
-        setTerminalOpen(!terminalOpen);
+        setBottomOpen(!bottomOpen);
         return;
       }
       if (mod && e.shiftKey && e.key.toLowerCase() === "s") {
@@ -46,7 +47,7 @@ export function IdeShell() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [toggleSidebar, setTerminalOpen, terminalOpen]);
+  }, [toggleSidebar, setBottomOpen, bottomOpen]);
 
   useEffect(() => {
     if (!isElectron()) return;
@@ -62,9 +63,18 @@ export function IdeShell() {
     offs.push(api.menu.onSaveAll(() => window.dispatchEvent(new CustomEvent("pg:save-all"))));
     offs.push(api.menu.onCommandPalette(() => window.dispatchEvent(new CustomEvent("pg:command-palette"))));
     offs.push(api.menu.onToggleSidebar(() => toggleSidebar()));
-    offs.push(api.menu.onTogglePanel(() => setTerminalOpen(!terminalOpen)));
+    offs.push(api.menu.onTogglePanel(() => setBottomOpen(!bottomOpen)));
     return () => offs.forEach((off) => off());
-  }, [openWorkspace, toggleSidebar, setTerminalOpen, terminalOpen]);
+  }, [openWorkspace, toggleSidebar, setBottomOpen, bottomOpen]);
+
+  useEffect(() => {
+    const onFocusProblems = () => {
+      setBottomOpen(true);
+      setBottomTab("problems");
+    };
+    window.addEventListener("pg:focus-problems", onFocusProblems);
+    return () => window.removeEventListener("pg:focus-problems", onFocusProblems);
+  }, [setBottomOpen, setBottomTab]);
 
   const showEditor = activeTab && tabs.some((t) => t.path === activeTab);
 
@@ -87,9 +97,9 @@ export function IdeShell() {
               <WelcomeScreen />
             </div>
           )}
-          {terminalOpen && (
+          {bottomOpen && (
             <div className="h-[220px] shrink-0 border-t border-panel-border bg-chrome">
-              <TerminalPanel />
+              <BottomPanel />
             </div>
           )}
         </main>

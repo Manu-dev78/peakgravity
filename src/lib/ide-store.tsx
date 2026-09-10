@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 
 export type ActivityView = "explorer" | "search" | "scm" | "run" | "remote" | "extensions";
+export type BottomTab = "terminal" | "problems" | "output";
 
 export interface RecentWorkspace {
   name: string;
@@ -15,6 +16,11 @@ interface IdeState {
   toggleSidebar: () => void;
   agentOpen: boolean;
   setAgentOpen: (open: boolean) => void;
+  bottomOpen: boolean;
+  setBottomOpen: (open: boolean) => void;
+  bottomTab: BottomTab;
+  setBottomTab: (tab: BottomTab) => void;
+  /** Legacy: same as `bottomOpen`; kept for back-compat with old menu wiring. */
   terminalOpen: boolean;
   setTerminalOpen: (open: boolean) => void;
   workspace: RecentWorkspace | null;
@@ -33,7 +39,8 @@ export function IdeProvider({ children }: { children: ReactNode }) {
   const [activeView, setActiveView] = useState<ActivityView | null>("explorer");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [agentOpen, setAgentOpen] = useState(true);
-  const [terminalOpen, setTerminalOpen] = useState(false);
+  const [bottomOpen, setBottomOpen] = useState(false);
+  const [bottomTab, setBottomTab] = useState<BottomTab>("terminal");
   const [workspace, setWorkspace] = useState<RecentWorkspace | null>(null);
   const [recent, setRecent] = useState<RecentWorkspace[]>([]);
   const [selectedModel, setSelectedModelState] = useState("No model configured");
@@ -63,8 +70,17 @@ export function IdeProvider({ children }: { children: ReactNode }) {
       toggleSidebar: () => setSidebarOpen((s) => !s),
       agentOpen,
       setAgentOpen,
-      terminalOpen,
-      setTerminalOpen,
+      bottomOpen,
+      setBottomOpen,
+      bottomTab,
+      setBottomTab,
+      // Legacy compat: the existing menu/keyboard wiring still calls
+      // setTerminalOpen; mirror the open state into the bottom panel.
+      terminalOpen: bottomOpen,
+      setTerminalOpen: (open: boolean) => {
+        setBottomOpen(open);
+        if (open) setBottomTab("terminal");
+      },
       workspace,
       openWorkspace: (ws) => {
         setWorkspace(ws);
@@ -82,7 +98,7 @@ export function IdeProvider({ children }: { children: ReactNode }) {
         localStorage.setItem(MODEL_KEY, m);
       },
     }),
-    [activeView, sidebarOpen, agentOpen, terminalOpen, workspace, recent, selectedModel],
+    [activeView, sidebarOpen, agentOpen, bottomOpen, bottomTab, workspace, recent, selectedModel],
   );
 
   return <IdeContext.Provider value={value}>{children}</IdeContext.Provider>;

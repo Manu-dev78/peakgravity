@@ -1,6 +1,7 @@
 import { useEffect, useRef, useCallback, useState } from "react";
 import Editor, { type Monaco, type OnMount } from "@monaco-editor/react";
 import { useFsStore, type OpenTab } from "@/lib/fs-store";
+import { attachTypeScriptToModel } from "@/lib/ts-monaco";
 import { AlertCircle, RefreshCw, Save, Lock } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { isElectron } from "@/lib/electron-api";
@@ -43,9 +44,11 @@ function readOnlyBody(tab: OpenTab) {
 }
 
 export function EditorPane() {
-  const { tabs, activeTab, setBuffer, saveActive, reloadTab } = useFsStore();
+  const { tabs, activeTab, setBuffer, saveActive, reloadTab, folder } = useFsStore();
   const tab = activeTab ? tabs.find((t) => t.path === activeTab) : null;
   const tabRef = useRef<OpenTab | null>(null);
+  const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
+  const detachRef = useRef<(() => void) | null>(null);
   const [monacoTheme] = useState<"vs-dark">("vs-dark");
 
   // Keep a ref to the current tab so the editor `onChange` knows which path to write to
@@ -53,7 +56,55 @@ export function EditorPane() {
     tabRef.current = tab ?? null;
   }, [tab]);
 
-  const onMount: OnMount = useCallback((_editor, monaco: Monaco) => {
+  // Attach / detach the TypeScript language services as the model changes.
+  useEffect(() => {
+    if (!tab) {
+      detachRef.current?.();
+      detachRef.current = null;
+      return;
+    }
+    let cancelled = false;
+    let interval: ReturnType<typeof setInterval> | null = null;
+    const tryAttach = async () => {
+      const editor = editorRef.current;
+      const model = editor?.getModel();
+      if (cancelled) return;
+      if (!model) {
+        // Editor not mounted yet — poll briefly.
+        if (!interval) {
+          interval = setInterval(tryAttach, 100);
+          setTimeout(() => {
+            if (interval) clearInterval(interval);
+            interval = null;
+          }, 5000);
+        }
+        return;
+      }
+      if (interval) {
+        clearInterval(interval);
+        interval = null;
+      }
+      if (model.uri.fsPath !== tab.path) return;
+      const detach = await attachTypeScriptToModel(model, {
+        root: folder?.path ?? null,
+      });
+      if (cancelled) {
+        detach();
+        return;
+      }
+      detachRef.current = detach;
+    };
+    void tryAttach();
+    return () => {
+      cancelled = true;
+      if (interval) clearInterval(interval);
+      detachRef.current?.();
+      detachRef.current = null;
+    };
+  }, [tab?.path, folder?.path]);
+
+  const onMount: OnMount = useCallback((editor, monaco: Monaco) => {
+    editorRef.current = editor;
     monaco.editor.defineTheme("peakgravity-dark", {
       base: "vs-dark",
       inherit: true,

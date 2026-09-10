@@ -1,12 +1,14 @@
 import { Bell, CircleX, TriangleAlert, GitBranch, RefreshCw, Code2, FolderOpen, X, AlertCircle, Loader2 } from "lucide-react";
 import { useIde } from "@/lib/ide-store";
 import { useFsStore } from "@/lib/fs-store";
+import { useProblemsStore } from "@/lib/problems-store";
 import { isElectron } from "@/lib/electron-api";
 import { cn } from "@/lib/utils";
 
 export function StatusBar() {
   const { workspace, selectedModel } = useIde();
   const { folder, tabs, activeTab, closeFolder, saveAll, openFolder } = useFsStore();
+  const problems = useProblemsStore();
   const dirty = tabs.filter((t) => t.dirty).length;
   const active = activeTab ? tabs.find((t) => t.path === activeTab) : null;
   const electron = isElectron();
@@ -53,8 +55,24 @@ export function StatusBar() {
           <FolderOpen size={13} /> Open Folder
         </button>
       )}
-      <button className="flex h-full items-center gap-1 px-2 hover:bg-accent">
-        <CircleX size={13} /> 0 <TriangleAlert size={13} className="ml-1" /> 0
+      <button
+        onClick={() => {
+          if (window.api) {
+            window.dispatchEvent(new CustomEvent("pg:focus-problems"));
+          }
+        }}
+        title={
+          problems.errors + problems.warnings > 0
+            ? `${problems.errors} errors, ${problems.warnings} warnings`
+            : "No problems"
+        }
+        className={cn(
+          "flex h-full items-center gap-1 px-2 hover:bg-accent",
+          problems.errors > 0 && "text-destructive-foreground",
+        )}
+      >
+        <CircleX size={13} /> {problems.errors}{" "}
+        <TriangleAlert size={13} className="ml-1" /> {problems.warnings}
       </button>
       <div className="ml-auto flex h-full items-center">
         {active && (

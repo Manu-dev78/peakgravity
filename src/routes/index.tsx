@@ -4,6 +4,7 @@ import { IdeProvider } from "@/lib/ide-store";
 import { FsProvider } from "@/lib/fs-store";
 import { ConversationProvider } from "@/lib/conversation-store";
 import { DiffProvider } from "@/lib/diff-store";
+import { ProblemsProvider } from "@/lib/problems-store";
 import { registerBuiltInTools } from "@/lib/agent/tools";
 import { IdeShell } from "@/components/ide/IdeShell";
 import { useAuth } from "@/hooks/useAuth";
@@ -53,7 +54,9 @@ function Index() {
       <FsProvider>
         <ConversationProvider>
           <DiffProvider>
-            <IdeShell />
+            <ProblemsProvider>
+              <IdeShell />
+            </ProblemsProvider>
           </DiffProvider>
         </ConversationProvider>
       </FsProvider>
