@@ -6,6 +6,7 @@
 
 import { AlertCircle, AlertTriangle, Info, Sparkles, FileWarning } from "lucide-react";
 import { useProblemsStore } from "@/lib/problems-store";
+import { useFsStore } from "@/lib/fs-store";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
 
@@ -13,6 +14,7 @@ type SeverityFilter = "all" | "error" | "warning" | "info";
 
 export function ProblemsPanel() {
   const { problems, errors, warnings, byFile } = useProblemsStore();
+  const { revealPosition } = useFsStore();
   const [filter, setFilter] = useState<SeverityFilter>("all");
 
   const filtered = problems.filter((p) => {
@@ -71,8 +73,9 @@ export function ProblemsPanel() {
                       <button
                         key={`${file}-${p.line}-${p.column}-${i}`}
                         onClick={() => {
-                          // L3 will wire this to "open the file at line:col"
-                          void p;
+                          if (p.line > 0) {
+                            revealPosition(p.path, p.line, p.column);
+                          }
                         }}
                         className={cn(
                           "flex w-full items-center gap-2 px-3 py-1 text-left hover:bg-accent/50",

@@ -315,7 +315,7 @@ function getFileOrNull(path: string): ts.SourceFile | null {
       return;
     }
 
-    if (msg.type === "completions") {
+    if (pathMsg.type === "completions") {
       const opts: ts.GetCompletionsAtPositionOptions = {
         triggerKind: ts.CompletionTriggerKind.Invoked,
         includeExternalModuleExports: true,
@@ -325,7 +325,6 @@ function getFileOrNull(path: string): ts.SourceFile | null {
         useLabelDetailsInCompletionEntries: true,
         includeAutomaticOptionalChainCompletions: true,
         includeCompletionsWithObjectLiteralMethodSnippets: true,
-        includeCompletionsWithImportModuleSpecifier: true,
       };
       const result = service.getCompletionsAtPosition(pathMsg.path, position, opts);
       const out: CompletionItem[] = [];

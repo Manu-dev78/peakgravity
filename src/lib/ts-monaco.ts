@@ -279,23 +279,23 @@ export async function attachTypeScriptToModel(
         if (m.uri.toString() !== model.uri.toString()) return null;
         const edit = await client.rename(path, pos.lineNumber, pos.column, newName);
         if (!edit) return null;
-        const workspaceEdit: monaco.languages.WorkspaceEdit = {
+        const workspaceEdit = {
           edits: [
             {
               resource: monaco.Uri.file(edit.path),
-              range: {
-                startLineNumber: edit.startLine,
-                startColumn: edit.startColumn,
-                endLineNumber: edit.endLine,
-                endColumn: edit.endColumn,
+              edit: {
+                range: {
+                  startLineNumber: edit.startLine,
+                  startColumn: edit.startColumn,
+                  endLineNumber: edit.endLine,
+                  endColumn: edit.endColumn,
+                },
+                text: edit.newText,
               },
-              text: edit.newText,
             },
           ],
-        };
-        return workspaceEdit as unknown as ReturnType<
-          Parameters<typeof monaco.languages.registerRenameProvider>[1]["provideRenameEdits"]
-        >;
+        } as unknown as monaco.languages.WorkspaceEdit;
+        return workspaceEdit;
       },
     }),
   );

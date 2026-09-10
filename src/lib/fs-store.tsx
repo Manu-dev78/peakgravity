@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import { isElectron, type DirEntry, type FsReadResult } from "./electron-api";
 import { useIde } from "./ide-store";
 import { languageFor } from "./editor-languages";
+import * as monaco from "monaco-editor";
 
 export interface OpenTab {
   path: string;
@@ -38,7 +39,7 @@ interface FsState {
 
   openFolder: () => Promise<void>;
   closeFolder: () => void;
-  openFile: (path: string, options?: { activate?: boolean }) => Promise<void>;
+  openFile: (path: string, options?: { activate?: boolean; line?: number; column?: number }) => Promise<void>;
   closeTab: (path: string, options?: { force?: boolean }) => Promise<void>;
   setActiveTab: (path: string) => void;
   toggleDir: (path: string) => Promise<void>;
@@ -48,6 +49,7 @@ interface FsState {
   saveTab: (path: string) => Promise<void>;
   reloadTab: (path: string) => Promise<void>;
   revealInTree: (path: string) => Promise<void>;
+  revealPosition: (path: string, line?: number, column?: number) => Promise<void>;
   /** True when the user is on the web preview with no real FS. */
   webFallback: boolean;
   /** Imperative state update — used by context-menu actions that don't expose a method. */
@@ -209,7 +211,10 @@ export function FsProvider({ children }: { children: ReactNode }) {
   }, [ide]);
 
   const openFile = useCallback(
-    async (path: string, options?: { activate?: boolean }) => {
+    async (
+      path: string,
+      options?: { activate?: boolean; line?: number; column?: number }
+    ) => {
       const a = api();
       if (!a) {
         toast.error("File opening is only available in the desktop build.");
@@ -219,6 +224,9 @@ export function FsProvider({ children }: { children: ReactNode }) {
       const existing = tabs.find((t) => t.path === path);
       if (existing) {
         if (activate) setActiveTabState(path);
+        if (options?.line !== undefined && options?.column !== undefined) {
+          revealPosition(path, options.line, options.column);
+        }
         return;
       }
       // Optimistic placeholder
@@ -256,16 +264,36 @@ export function FsProvider({ children }: { children: ReactNode }) {
               : t,
           ),
         );
+        if (activate) await revealPosition(path, options?.line, options?.column);
         if (folder) await revealInTree(path);
       } catch (e) {
         const msg = e instanceof Error ? e.message : "Failed to read file";
-        setTabs((prev) => prev.map((t) => (t.path === path ? { ...t, loading: false, error: msg } : t)));
+        setTabs((prev) =>
+          prev.map((t) => (t.path === path ? { ...t, loading: false, error: msg } : t))
+        );
         toast.error(`Failed to open ${basename(path)}: ${msg}`);
       }
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [folder, tabs],
+},
+    [tabs, folder, api, revealPosition],
   );
+
+  const revealPosition = useCallback(
+    async (path: string, line?: number, column?: number) => {
+      const editor = window.monaco?.editor;
+      if (!editor) return;
+      const model = editor.getModel(monaco.Uri.file(path));
+      if (!model) return;
+      if (line !== undefined) {
+        editor.revealLineInCenter(line, monaco.ScrollType.Smooth);
+        if (column !== undefined) {
+          model.setCursorPosition({ lineNumber: line, column });
+          editor.revealPosition(
+            { lineNumber: line, column },
+            monaco.ScrollType.Smooth
+          );
+        }
+      },
+    []);
 
   const closeTab = useCallback(
     async (path: string, options?: { force?: boolean }) => {
@@ -491,6 +519,7 @@ export function FsProvider({ children }: { children: ReactNode }) {
         saveTab: () => Promise.resolve(),
         reloadTab: () => Promise.resolve(),
         revealInTree: () => Promise.resolve(),
+        revealPosition: () => Promise.resolve(),
         webFallback,
         setState: () => undefined,
       });
@@ -503,7 +532,7 @@ export function FsProvider({ children }: { children: ReactNode }) {
       if (next.loadingFolder !== undefined) setLoadingFolder(next.loadingFolder);
       if (next.error !== undefined) setError(next.error);
     },
-    [folder, tree, expanded, dirCache, tabs, activeTab, loadingFolder, error, webFallback],
+    [folder, tree, expanded, dirCache, tabs, activeTab, loadingFolder, error, webFallback, revealPosition],
   );
 
   // Wire the `pg:save` / `pg:save-all` custom events from the menu (IdeShell).
